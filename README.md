@@ -95,6 +95,7 @@ All knobs live in the **`── tunables ──`** block near the top of the fil
 | `CTX_GREEN_AT` / `CTX_RED_AT` | Usage breakpoints where the context bar hits full green / full red. |
 | `PACE_RED_RATIO` | How far ahead of the clock counts as "red" (default `4/3`). |
 | `C_TRACK` | The bar's background "track" color. **Tuned for a *light* terminal by default** — see below. |
+| `WEEKDAYS` | Labels for the 7-day window's reset weekday. Defaults to Simplified Chinese; swap in `("Mon", "Tue", …)` for English. |
 
 ### Dark terminals
 

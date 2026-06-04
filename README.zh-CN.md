@@ -95,6 +95,7 @@ Claude Code 在每次刷新时调用 `statusLine` 命令,把一段 JSON payload 
 | `CTX_GREEN_AT` / `CTX_RED_AT` | 上下文条达到纯绿 / 纯红的用量断点。 |
 | `PACE_RED_RATIO` | 超前时钟多少算「红」(默认 `4/3`)。 |
 | `C_TRACK` | 进度条背景「轨道」色。**默认是给浅色终端调的** —— 见下文。 |
+| `WEEKDAYS` | 7 天窗口重置日的星期标签。默认简体中文;想要英文就换成 `("Mon", "Tue", …)`。 |
 
 ### 深色终端
 

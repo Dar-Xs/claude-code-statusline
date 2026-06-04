@@ -41,6 +41,11 @@ QUAD = (" ", "▘", "▝", "▀", "▖", "▌", "▞", "▛",
 SUP_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
 SUB_DIGITS = "₀₁₂₃₄₅₆₇₈₉"
 
+# Weekday labels for the 7-day window's absolute reset time (e.g. "周四 09:00").
+# Defaults to Simplified Chinese — replace with your own locale if you prefer:
+#   WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+WEEKDAYS = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
 # Greys for non-bar chrome. Bar fills use the green→gold→red gradient below.
 C_DIM = "\033[38;5;250m"   # separators
 C_MUTE = "\033[38;5;244m"  # token text / reset text
@@ -73,8 +78,6 @@ PACE_RED_RATIO = 4 / 3
 WIN_5H = 5 * 3600
 WIN_7D = 7 * 86400
 
-CN_WEEKDAYS = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-
 
 def fmt_tokens(n: int) -> str:
     """12345 -> '12.3k', 123456 -> '123k', 1000000 -> '1M'."""
@@ -82,7 +85,8 @@ def fmt_tokens(n: int) -> str:
         s = f"{n / 1_000_000:.1f}".rstrip("0").rstrip(".")
         return f"{s}M"
     if n >= 100_000:
-        return f"{round(n / 1000)}k"
+        k = round(n / 1000)               # 999_999 rounds to 1000k -> show 1M
+        return "1M" if k >= 1000 else f"{k}k"
     if n >= 1000:
         return f"{n / 1000:.1f}k"
     return str(n)
@@ -115,7 +119,7 @@ def fmt_reset_clock(epoch: float, now: float) -> str:
     if days_ahead <= 0:
         return hm
     if days_ahead <= 6:
-        return f"{CN_WEEKDAYS[dt.weekday()]} {hm}"
+        return f"{WEEKDAYS[dt.weekday()]} {hm}"
     return dt.strftime("%m-%d ") + hm
 
 
@@ -173,6 +177,32 @@ def detect_limit(model_id: str, ctx: int, exceeds_200k: bool) -> int:
     return 200_000
 
 
+def _tail_lines(path: str, block_size: int = 65536):
+    """Yield a file's lines from last to first without loading it all.
+
+    A transcript can grow to many MB and the status line refreshes often, so
+    reading the whole file each time is O(file size). We usually need only the
+    last turn, so seek to the end and walk backwards a block at a time, holding
+    each block's (possibly truncated) leading fragment until the preceding
+    block completes it.
+    """
+    with open(path, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        pos = fh.tell()
+        fragment = b""
+        while pos > 0:
+            read = min(block_size, pos)
+            pos -= read
+            fh.seek(pos)
+            chunk = fh.read(read) + fragment
+            pieces = chunk.split(b"\n")
+            fragment = pieces[0]            # may continue into the next block back
+            for piece in reversed(pieces[1:]):
+                yield piece.decode("utf-8", "replace")
+        if fragment:
+            yield fragment.decode("utf-8", "replace")
+
+
 def last_context_tokens(transcript_path: str) -> int:
     """Tokens occupying the context at the most recent main-chain turn.
 
@@ -181,29 +211,26 @@ def last_context_tokens(transcript_path: str) -> int:
     sub-agent sidechain. Context size = input + cache_creation + cache_read.
     """
     try:
-        with open(transcript_path, "r", encoding="utf-8") as fh:
-            lines = fh.readlines()
+        for line in _tail_lines(transcript_path):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("type") != "assistant" or rec.get("isSidechain"):
+                continue
+            usage = (rec.get("message") or {}).get("usage")
+            if not usage:
+                continue
+            return (
+                usage.get("input_tokens", 0)
+                + usage.get("cache_creation_input_tokens", 0)
+                + usage.get("cache_read_input_tokens", 0)
+            )
     except OSError:
         return 0
-
-    for line in reversed(lines):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if rec.get("type") != "assistant" or rec.get("isSidechain"):
-            continue
-        usage = (rec.get("message") or {}).get("usage")
-        if not usage:
-            continue
-        return (
-            usage.get("input_tokens", 0)
-            + usage.get("cache_creation_input_tokens", 0)
-            + usage.get("cache_read_input_tokens", 0)
-        )
     return 0
 
 
@@ -211,8 +238,8 @@ def render_bar(frac: float, width: int) -> str:
     """A sub-character-precision bar `width` cells wide.
 
     Effective resolution is `width * 8`: the boundary cell is drawn with a
-    left-aligned eighth block (▏▎▍▌▋▊▉), so a 16-cell bar resolves ~0.8%.
-    Colored green/amber/red by the same WARN/DANGER thresholds as context.
+    left-aligned eighth block (▏▎▍▌▋▊▉), so the default 8-cell bar resolves
+    ~1.5%. Colored green→gold→red by absolute usage (see `context_color`).
     """
     frac = min(1.0, max(0.0, frac))
     color = context_color(frac)
