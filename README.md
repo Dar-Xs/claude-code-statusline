@@ -1,5 +1,7 @@
 # claude-code-statusline
 
+**English** | [简体中文](README.zh-CN.md)
+
 > A context-window & subscription rate-limit gauge for the [Claude Code](https://claude.com/claude-code) status line — sub-cell Unicode bars, a single Python file, zero dependencies.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
